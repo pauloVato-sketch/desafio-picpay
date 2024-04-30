@@ -1,0 +1,218 @@
+Etapas pré-desenvolvimento:
+ - Escolha da linguagem e framework.
+ - Criação de arquitetura do projeto (escopo mais alto, microserviço vs monolitico vs MVC por exemplo, parte mais complexa!).
+ - Decisão das funcionalidades da aplicação.
+ - Escolha, se necessário, de design patterns (uso de factory, memento por exemplo).
+
+Dependências Spring utilizadas:
+ - Spring Web
+ - Spring Data JDBC
+ - H2 Database
+ - Spring for Apache Kafka
+ - Spring Boot Devtools
+
+Escolha por divisão de pacotes baseada em domínio da aplicação (carteira, transação e notificação), acredito que é uma maneira
+sensata de pensar na estrutura de arquivos do projeto.
+(Microserviços por funcionalidade? Talvez seja excessivo em alguns casos menores, no âmbito pessoal).
+
+Etapas de desenvolvimento:
+1) Criação de entidades/modelos.
+2) Criação de banco de dados/DAO/Repositoriess.
+3) Criação dos serviços.
+
+Uso de record ao invés de classe para a Transação, já que apenas é um mockup de uma linha no banco.
+Record são "classes" que apenas representam estruturas de dados que serão salvos, similar a uma struct C.
+
+Anotação @Id para especificar campo de ID.
+Anotação @Table para especificar o nome da tabela se for diferenciar do nome do record/classe.
+Anotação @CreatedDate declara o campo como o representante da data na qual a entidade (Transaction por ex.) foi criada.
+    Foi criada com finalidade de possibilitar auditoria (checks e reviews sobre alterações e consultas na base de dados).
+
+Anotação na classe principal do projeto @EnableJDBCAuditing, também para auditoria.
+
+Record também para a classe da carteira, mas atenção: senhas não devem ser salvas como String(!!), 
+há de se utilizar algum meio de criptografia comum como Argon2id, scrypt, bcrypt, ou PBKDF2.
+Para a variável 'tipo', criação de um Enum (aparentemente o enum Java é bem mais flexível do que Cpp, permite construtores,
+métodos e variáveis tal como uma classe normal, provavelmente resquício da linguagem ser toda OOP).
+
+Record também para a notificação, com apenas o campo de mensagem por estar seguindo a estrutura do JSON do mockup fornecido,
+quaisquer outras informações poderiam estar presentes, mas a efeitos de simplicidade não foram inseridas.
+
+-- 2ª etapa
+Scripts de schemas dos bancos: /resources.
+schema.sql: Criação das tabelas, casa nomes com os nomes ques estão na entity do modelo Transactions e Wallet.
+data.sql: Inserção de dados/Entradas base do banco de dados.
+
+Ambos estes arquivos, com estes nomes especificamente, são executados para inicialização do banco de dados (pode variar
+diferentes scripts para diferentes SQLs).
+Ver mais detalhes: https://docs.spring.io/spring-boot/docs/2.1.x/reference/html/howto-database-initialization.html
+
+-- 3ª etapa
+Criação dos serviços propriamente ditos (controllers do Laravel?). (Anotação @Service)
+    Criação dos repositórios(?) (abstração para acesso a banco de dados?)
+
+Dividindo criação do registro de uma transação (registro pois o objeto Transaction em si já existirá) em partes:
+ - Validar que a transação pode ser feita.
+ - - - Realizamos a validação no service pois iremos fazer consultas no banco de dados.
+ - - - É possível realizar mais desacoplamento, criando por exemplo uma anotação de validação(?=recurso do Spring).
+ - - - ATENÇÃO: Tratamento dos erros(!!) é sempre necessário em aplicações de cunho real, levante as exceptions!.
+ - 'Criar' transação, que na verdade é a criação do registro no Repository. 
+ - - - Apenas dar save passando a Transaction para o repository, e utilizar a var de registro ao invés do objeto puro.
+ - Atualizar as carteiras, tanto do pagador quanto do recebedor.
+ - - - Como já existem as carteiras, procura quem é o pagador, debita da sua conta, procura quem é o recebedor e deposita
+ - - - na sua conta.
+ - Chamar serviço externo de autorização externo ao final do processamento.
+ - - - Etapa mais difícil(Atenção!).
+ - - - Primeiro: Serviço autorizador: Começamos criando um pacote e classe para autorização, para continuar com a ideia do
+ - - - desacoplamento, meu sentimento sobre este, é que se faz sentido lógico separar, mesmo que por pouca razão, FAÇA!,
+ - - - pois no futuro tendem a surgir mais razões para fazê-lo do que para desfazê-lo.
+ - - - Além disso, é um serviço de urgência, ou seja, resposta síncrona (pelo menos até onde vai a decisão do arquiteto).
+ - - - Uso de 'RestClient' do Spring para realizar a chamada URL do mocky.
+ - - - Segundo: Serviço notificador: Já para o serviço notificador, há tolerância sobre o atraso, pois a notificação apesar de
+ - - - importante, dificilmente seria um problema gravíssimo, apesar de que minimizar o tempo é o ideal.
+ - - - Para claro uso da mensageria, utilizaremos como visto nas Dependências descritas, o 'Kafka'.
+ - - - Criação de produtor e consumidor, ver vídeos sobre o design pattern pubsub para reafirmação do conhecimento.
+ - - - ATENÇÃO: Em um cenário de produção, existe a alternativa de criar um objeto de notificação, que conteria a transação,
+ - - - adicionada de quaisquer outras informações que o cliente desejasse, e não só as informações da transação pura.
+ - - - Com a anotação 'KafkaListener', dizemos que o método do consumidor está 'ouvindo', aguardando pelas mensagens enviadas
+ - - - do produtor do grupo 'picpay-backend-spr' e sobre o tópico 'transaction-notification' (mostrando a flexibildade do
+ - - - pacote).
+Durante o processamento pode acontecer de quaisquer destas etapas falhar, portanto, devemos dar rollback nas ações, o que
+é viável através da anotação @Transactional.
+
+Em seguida, criação do(s) Controller(s)! (achei que não haveria a camada de controllers, considerando que temos a de Service,
+mas ainda faz sentido pois é uma API rest, então em teoria terá seus pontos de entrada do front pro back).
+
+Após realizar a configuração dos controllers, com os mapeamentos das URLs sendo encaminhados para métodos do service, 
+vamos à fase de testes.
+
+FASE DE testes
+Para testar nosso sistema Web, claramente percebemos que precisamos do serviço do kafka rodando e iremos configurar
+via 'Docker'.
+1º passo: Criando e escrevendo o docker-compose.yml (mais infos sobre o arquivo, comentado nele).
+2º passo: Subir o docker com 'compose up'.
+3º passo: Configurar o application.properties do projeto de acordo com a porta definida para o serviço do Kafka.
+(Atenção pois é fácil de errar campos com erros de digitação)
+
+Algumas alterações que no vídeo base foram deixadas para trás, mas que já havia contemplado aqui no texto:
+Nomeação da tabela WALLETS com o @Table, adição de crédito na transação.
+
+Já está funcionando! Pode-se realizar consultas na url localhost:8080/h2-console (Definida no application.properties)
+(Atenção no caminho relativo para o arquivo do banco jdbc:h2:file:PATH, principalmente na primeira vez de realizar 
+consulta no console.)
+
+Por último, iremos trocar o retorno de stack trace de erros para colocarmos um exception handler (TransactionExceptionHandler).
+Qual a diferença do tratamento de erro que fizemos nas classes de Exception anteriores para este handler?
+Simples, o handler recebe as exceções que acontecem no CONTROLLER em um nível mais alto, 
+é como se o erro ainda estivesse "subindo". Então podemos, por exemplo neste caso, alterar a mensagem de erro que aparece,
+que é o que foi feito no exception handler no método que trata a exceção de transação inválida.
+
+EX:
+
+ANTES:
+http :8080/transaction valor=10000 pagador=1 recebedor=2                                           
+HTTP/1.1 500
+Connection: close
+Content-Type: application/json
+Date: Thu, 25 Apr 2024 00:46:04 GMT
+Transfer-Encoding: chunked
+
+{
+    "error": "Internal Server Error",
+    "message": "Transação Inválida - Transaction[id=null, pagador=1, recebedor=2, valor=10000.00, criadaEm=null]",
+    "path": "/transaction",
+    "status": 500,
+    "timestamp": "2024-04-25T00:46:04.019+00:00",
+    "trace": "br.com.phourlemec.picpay_backend_spr.transaction.InvalidTransactionException: Transação Inválida - Transaction[id=null, pagador=1, recebedor=2, valor=10000.00, criadaEm=null]\n\t
+    at br.com.phourlemec.picpay_backend_spr.transaction.TransactionService.lambda$2(TransactionService.java:69)\n\t
+    at java.base/java.util.Optional.orElseThrow(Optional.java:403)\n\t
+    at br.com.phourlemec.picpay_backend_spr.transaction.TransactionService.lambda$0(TransactionService.java:69)\n\t
+    at java.base/java.util.Optional.map(Optional.java:260)\n\t
+    at br.com.phourlemec.picpay_backend_spr.transaction.TransactionService.validate(TransactionService.java:64)\n\t
+    at br.com.phourlemec.picpay_backend_spr.transaction.TransactionService.create(TransactionService.java:34)\n\t
+    at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)\n\t
+    at java.base/java.lang.reflect.Method.invoke(Method.java:580)\n\t
+    at org.springframework.aop.support.AopUtils.invokeJoinpointUsingReflection(AopUtils.java:351)\n\t
+    at org.springframework.aop.framework.ReflectiveMethodInvocation.invokeJoinpoint(ReflectiveMethodInvocation.java:196)\n\t
+    at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:163)\n\t
+    at org.springframework.aop.framework.CglibAopProxy$CglibMethodInvocation.proceed(CglibAopProxy.java:765)\n\t
+    at org.springframework.transaction.interceptor.TransactionInterceptor$1.proceedWithInvocation(TransactionInterceptor.java:123)\n\t
+    at org.springframework.transaction.interceptor.TransactionAspectSupport.invokeWithinTransaction(TransactionAspectSupport.java:392)\n\t
+    at org.springframework.transaction.interceptor.TransactionInterceptor.invoke(TransactionInterceptor.java:119)\n\t
+    at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:184)\n\t
+    at org.springframework.aop.framework.CglibAopProxy$CglibMethodInvocation.proceed(CglibAopProxy.java:765)\n\t
+    at org.springframework.aop.framework.CglibAopProxy$DynamicAdvisedInterceptor.intercept(CglibAopProxy.java:717)\n\t
+    at br.com.phourlemec.picpay_backend_spr.transaction.TransactionService$$SpringCGLIB$$0.create(<generated>)\n\t
+    at br.com.phourlemec.picpay_backend_spr.transaction.TransactionController.createTransaction(TransactionController.java:24)\n\t
+    at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)\n\t
+    at java.base/java.lang.reflect.Method.invoke(Method.java:580)\n\t
+    at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:255)\n\t
+    at org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:188)\n\t
+    at org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:118)\n\t
+    at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:925)\n\t
+    at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:830)\n\t
+    at org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87)\n\t
+    at org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1089)\n\t
+    at org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:979)\n\t
+    at org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1014)\n\t
+    at org.springframework.web.servlet.FrameworkServlet.doPost(FrameworkServlet.java:914)\n\t
+    at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:590)\n\t
+    at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:885)\n\t
+    at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:658)\n\t
+    at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:205)\n\t
+    at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149)\n\t
+    at org.apache.tomcat.websocket.server.WsFilter.doFilter(WsFilter.java:51)\n\t
+    at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174)\n\t
+    at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149)\n\t
+    at org.springframework.web.filter.RequestContextFilter.doFilterInternal(RequestContextFilter.java:100)\n\t
+    at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116)\n\t
+    at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174)\n\t
+    at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149)\n\t
+    at org.springframework.web.filter.FormContentFilter.doFilterInternal(FormContentFilter.java:93)\n\t
+    at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116)\n\t
+    at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174)\n\
+    tat org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149)\n\t
+    at org.springframework.web.filter.ServerHttpObservationFilter.doFilterInternal(ServerHttpObservationFilter.java:109)\n\t
+    at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116)\n\t
+    at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174)\n\t
+    at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149)\n\t
+    at org.springframework.web.filter.CharacterEncodingFilter.doFilterInternal(CharacterEncodingFilter.java:201)\n\t
+    at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116)\n\t
+    at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:174)\n\t
+    at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:149)\n\t
+    at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:167)\n\t
+    at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:90)\n\t
+    at org.apache.catalina.authenticator.AuthenticatorBase.invoke(AuthenticatorBase.java:482)\n\t
+    at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:115)\n\t
+    at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:93)\n\t
+    at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:74)\n\t
+    at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:344)\n\t
+    at org.apache.coyote.http11.Http11Processor.service(Http11Processor.java:391)\n\t
+    at org.apache.coyote.AbstractProcessorLight.process(AbstractProcessorLight.java:63)\n\t
+    at org.apache.coyote.AbstractProtocol$ConnectionHandler.process(AbstractProtocol.java:896)\n\t
+    at org.apache.tomcat.util.net.NioEndpoint$SocketProcessor.doRun(NioEndpoint.java:1744)\n\t
+    at org.apache.tomcat.util.net.SocketProcessorBase.run(SocketProcessorBase.java:52)\n\t
+    at org.apache.tomcat.util.threads.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1191)\n\t
+    at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:659)\n\t
+    at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:63)\n\t
+    at java.base/java.lang.Thread.run(Thread.java:1583)\n"
+}
+
+DEPOIS:
+http :8080/transaction valor=10000 pagador=1 recebedor=2                                           
+HTTP/1.1 400
+Connection: close
+Content-Length: 99
+Content-Type: application/json
+Date: Thu, 25 Apr 2024 00:55:49 GMT
+
+Transação Inválida - Transaction[id=null, pagador=1, recebedor=2, valor=10000.00, criadaEm=null]
+
+(ATENÇÃO: NA CALL DO SERVIÇO DE AUTORIZAÇÃO EXTERNO, DEVE-SE UTILIZAR O NOME DA VARIÁVEL TAL QUAL O JSON DO AUTENTICADOR
+IRÁ RETORNAR)
+
+Depois disso, iremos usar logs para testar a questão dos serviços externos de forma mais evidente.
+sl4j <--- é o pacote do logger.
+
+Por fim, esquecera de criar o tópico das mensagens do kafka, deve ser criado na classe principal da aplicação o @Bean!
+Também, e havia notado, o NotificationService estava apenas a casca.

@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Spring Boot-PicpayBackendSprApplication<picpay_backend_spr>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "br.com.phourlemec.picpay_backend_spr.PicpayBackendSprApplication",
+            "projectName": "picpay_backend_spr",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
+        }
+    ]
+}

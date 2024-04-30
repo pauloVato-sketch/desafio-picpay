@@ -1,0 +1,22 @@
+// spring.datasource.url=jdbc:h2:file:./data/picpay
+
+Definição de banco do tipo H2, que será salvo no arquivo 'picpay' na pasta data, se não existe, devemos criá-la.
+
+// spring.datasource.driverClassName=org.h2.Driver 
+
+Uso do driver H2 (assumo que existam múltiplos driver e formas de comunicação com um mesmo tipo de banco, por isso a explicitação).
+
+// spring.datasource.username=sa
+// spring.datasource.password=
+
+Credenciais a serem usadas no banco de dados.
+
+// spring.h2.console.enabled=true
+
+Habilita-se o console para possibilitar interação com o banco.
+
+// spring.h2.console.path=/h2-console
+Define caminho/arquivo para salvar arquivos pertinentes ao console (logs?).
+
+// spring.sql.init.mode=always
+Modo de inicialização do banco (?).

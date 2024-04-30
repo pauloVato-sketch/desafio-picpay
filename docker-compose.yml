@@ -1,0 +1,23 @@
+# Escrevendo versão (obsoleto)
+# version: '3.8'
+
+# Descrição dos serviços que estarão presentes na imagem, no caso apenas o Kafka, mas poderia ser o RabbitMQ ou qualquer outro
+services:
+    kafka:
+        # Pode-se pesquisar imagens no Docker Hub!.
+        image: 'bitnami/kafka:latest'
+        # Define a(s) porta(s) na(s) qual(is) o serviço irá rodar
+        ports:
+            - '9094:9094'
+        # Linhas 14, 15, 16, 18, 19 e 20 são default e podem ser encontradas na página da imagem no Docker Hub:
+        # https://hub.docker.com/r/bitnami/kafka
+        # A linha 17 é a única alteração, existe para definir como o cliente pode se conectar, mais em:
+        # https://www.confluent.io/blog/kafka-listeners-explained/
+        environment:
+            - KAFKA_CFG_NODE_ID=0
+            - KAFKA_CFG_PROCESS_ROLES=controller,broker
+            - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+            - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+            - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
+            - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
+            - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
